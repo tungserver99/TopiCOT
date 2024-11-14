@@ -70,6 +70,19 @@ class TopiCOT(nn.Module):
         cluster_result = kmean_model.fit(doc_embedding[None, :, :])
         doc_centroids = cluster_result._result.centers.squeeze(0)
         self.cluster_emb = doc_centroids
+        labels_flat = cluster_result._result.labels.flatten()
+
+        # Calculate the number of unique clusters
+        num_of_clusters = labels_flat.max().item() + 1  # Assumes cluster indices are 0-based
+
+        # Count the occurrences of each cluster
+        cluster_counts = torch.bincount(labels_flat, minlength=num_of_clusters)
+
+        # Calculate the ratio of elements in each cluster to the total number of elements
+        total_elements = labels_flat.numel()
+        ratios = cluster_counts / total_elements
+
+        cluster_mass = nn.Parameter(ratios.unsqueeze(1), requires_grad=False)
         
         # set up DCR
         self.group = torch.nn.functional.one_hot(
@@ -84,7 +97,8 @@ class TopiCOT(nn.Module):
         # set up TCR
         self.topic_emb_prj = nn.Sequential(nn.Linear(embed_size, 384),
                                        nn.Dropout(dropout))
-        self.TCR = TCR(doc_centroids, weight_loss_TCR, alpha_TCR, sinkhorn_max_iter)
+        self.topic_weights = nn.Parameter((torch.ones(self.num_topics) / self.num_topics).unsqueeze(1))
+        self.TCR = TCR(doc_centroids, weight_loss_TCR, alpha_TCR, sinkhorn_max_iter, init_a_dist = self.topic_weights, init_b_dist=cluster_mass)
 
         # for InfoNCE
         self.prj_rep = nn.Sequential(nn.Linear(self.num_topics, 384),

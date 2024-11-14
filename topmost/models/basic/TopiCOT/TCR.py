@@ -1,9 +1,9 @@
 import torch
 from torch import nn
-
+import torch.nn.functional as F
 
 class TCR(nn.Module):
-    def __init__(self, cluster_center, weight_loss_TCR, sinkhorn_alpha, OT_max_iter=5000, stopThr=.5e-2):
+    def __init__(self, cluster_center, weight_loss_TCR, sinkhorn_alpha, OT_max_iter=5000, stopThr=.5e-2, init_a_dist=None, init_b_dist=None):
         super().__init__()
         
         self.cluster_center = cluster_center
@@ -12,6 +12,14 @@ class TCR(nn.Module):
         self.weight_loss_TCR = weight_loss_TCR
         self.stopThr = stopThr
         self.epsilon = 1e-16
+        self.init_a_dist = init_a_dist
+        self.init_b_dist = init_b_dist
+
+        if init_a_dist is not None:
+            self.a_dist = init_a_dist
+
+        if init_b_dist is not None:
+            self.b_dist = init_b_dist
 
     def forward(self, topic_emb):
         if self.weight_loss_TCR <= 1e-6:
@@ -20,8 +28,15 @@ class TCR(nn.Module):
         M = torch.cdist(topic_emb, self.cluster_center)
 
         # Sinkhorn's algorithm
-        a = (torch.ones(M.shape[0]) / M.shape[0]).unsqueeze(1).to(device)
-        b = (torch.ones(M.shape[1]) / M.shape[1]).unsqueeze(1).to(device)
+        if self.init_a_dist is None:
+            a = (torch.ones(M.shape[0]) / M.shape[0]).unsqueeze(1).to(device)
+        else:
+            a = F.softmax(self.a_dist, dim=0).to(device)
+
+        if self.init_b_dist is None:
+            b = (torch.ones(M.shape[1]) / M.shape[1]).unsqueeze(1).to(device)
+        else:
+            b = F.softmax(self.b_dist, dim=0).to(device)
 
         u = (torch.ones_like(a) / a.size()[0]).to(device) # Kx1
 
