@@ -15,11 +15,12 @@ class TopiCOT(nn.Module):
                  weight_loss_ECR=250.0, alpha_ECR=20.0,
                  weight_loss_DCR=250.0, alpha_DCR=20.0,
                  weight_loss_TCR=250.0, alpha_TCR=20.0,
-                 sinkhorn_max_iter=1000, weight_loss_InfoNCE=10.0):
+                 sinkhorn_max_iter=1000, weight_loss_InfoNCE=10.0, batch_size=200):
         super().__init__()
 
         self.num_topics = num_topics
         self.num_data = num_data
+        self.batch_size = batch_size
         self.num_groups = num_groups
         self.beta_temp = beta_temp
 
@@ -85,14 +86,18 @@ class TopiCOT(nn.Module):
         cluster_mass = nn.Parameter(ratios.unsqueeze(1), requires_grad=False)
         
         # set up DCR
-        self.group = torch.nn.functional.one_hot(
-            cluster_result._result.labels.squeeze(0), self.num_groups).to(float)
-        self.group[self.group==0.0] = 0.01
-        self.group /= self.group.sum(axis=0, keepdim=True)
+        # self.group = torch.nn.functional.one_hot(
+        #     cluster_result._result.labels.squeeze(0), self.num_groups).to(float)
+        # self.group[self.group==0.0] = 0.01
+        # self.group /= self.group.sum(axis=0, keepdim=True)
 
-        self.DCR = DCR(weight_loss_DCR, doc_centroids)
+        # self.DCR = DCR(weight_loss_DCR, doc_centroids)
+        # self.theta_prj = nn.Sequential(nn.Linear(self.num_topics, 384),
+        #                                nn.Dropout(dropout))
         self.theta_prj = nn.Sequential(nn.Linear(self.num_topics, 384),
                                        nn.Dropout(dropout))
+        self.doc_weights = nn.Parameter((torch.ones(self.batch_size) / self.batch_size).unsqueeze(1))
+        self.DCR = TCR(doc_centroids, weight_loss_DCR, alpha_TCR, sinkhorn_max_iter, init_a_dist = self.doc_weights, init_b_dist=cluster_mass)
 
         # set up TCR
         self.topic_emb_prj = nn.Sequential(nn.Linear(embed_size, 384),
@@ -158,9 +163,13 @@ class TopiCOT(nn.Module):
         loss_ECR = self.ECR(cost)
         return loss_ECR
 
-    def get_loss_DCR(self, theta, bert):
+    # def get_loss_DCR(self, theta, bert):
+    #     theta_prj = self.theta_prj(theta)
+    #     loss_DCR = self.DCR(theta_prj, bert)
+    #     return loss_DCR
+    def get_loss_DCR(self, theta):
         theta_prj = self.theta_prj(theta)
-        loss_DCR = self.DCR(theta_prj, bert)
+        loss_DCR = self.DCR(theta_prj)
         return loss_DCR
 
     def get_loss_TCR(self, topic_emb):

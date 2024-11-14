@@ -59,7 +59,8 @@ if __name__ == "__main__":
                                                       weight_loss_TCR=args.weight_TCR,
                                                       alpha_TCR=args.alpha_TCR,
                                                       weight_loss_InfoNCE=args.weight_loss_InfoNCE,
-                                                      beta_temp=args.beta_temp)
+                                                      beta_temp=args.beta_temp,
+                                                      batch_size=args.batch_size)
     if args.model == 'TopiCOT':
         model.weight_loss_ECR = args.weight_ECR
     model = model.to(args.device)
